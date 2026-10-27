@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Extended (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
+ *  Refract Launcher (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
  *
- *  Client for the read-only Prism Extended core: newline-delimited JSON over stdio, protocol v1
+ *  Client for the read-only Refract core: newline-delimited JSON over stdio, protocol v1
  *  (see the DevKit's schemas/ipc-envelope.schema.json and schemas/ipc-response.schema.json).
  */
 #pragma once

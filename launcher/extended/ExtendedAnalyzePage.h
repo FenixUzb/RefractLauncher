@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Extended (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
+ *  Refract Launcher (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
  */
 #pragma once
 
@@ -17,7 +17,7 @@ class QPushButton;
 class QTreeWidget;
 
 /**
- * Instance page "Mods Analysis": asks the core for a read-only inventory of the instance's mods folder with
+ * Instance page "Mods Analysis": asks the Refract core for a read-only inventory of the instance's mods folder with
  * offline identity (Prism's own install records re-checked against file hashes). It only passes the folder
  * path; it never touches Prism's mod models, which rename and delete files while loading.
  */

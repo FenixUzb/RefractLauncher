@@ -1323,7 +1323,7 @@ endif()
 
 ####### Targets ########
 
-# Prism Extended bridge (fork only): a read-only instance page talking to the external core
+# Refract bridge (fork only): a read-only instance page talking to the external core
 set(LAUNCHER_SOURCES ${LAUNCHER_SOURCES}
     extended/CoreClient.cpp
     extended/CoreClient.h

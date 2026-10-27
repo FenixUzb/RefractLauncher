@@ -1,3 +1,13 @@
+# Refract Launcher
+
+**Refract Launcher is a personal fork of [Prism Launcher](https://github.com/PrismLauncher/PrismLauncher). It is not Prism Launcher and is not affiliated with or endorsed by the Prism Launcher project.** Please report problems with this fork here, not to Prism Launcher.
+
+What the fork adds (work in progress): a read-only **Mods Analysis** instance page backed by the external Refract core — mod archive checks, loader metadata and offline identity from the launcher's own install records; nothing in the mods folder is changed and no network is used. Prism Launcher's API keys are removed, so Microsoft sign-in, CurseForge and Imgur features stay disabled until the fork has keys of its own.
+
+The upstream Prism Launcher README follows.
+
+---
+
 <p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="/program_info/org.prismlauncher.PrismLauncher.logo-darkmode.svg">

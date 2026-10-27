@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Extended (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
+ *  Refract Launcher (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
  *
  *  Bridge tests. Core-backed cases need PRISM_EXT_TEST_CORE (path to the DevKit's src/ipc-server.mjs) and a
  *  node executable (PRISM_EXT_NODE or "node" on PATH); without them they are skipped. All files are synthetic

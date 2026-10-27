@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Extended (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
+ *  Refract Launcher (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
  */
 #include "ExtendedAnalyzePage.h"
 
@@ -68,7 +68,7 @@ void ExtendedAnalyzePage::buildUi()
 
 void ExtendedAnalyzePage::retranslate()
 {
-    m_notice->setText(tr("Read-only analysis by the Prism Extended core: files in the mods folder are only read, never changed. "
+    m_notice->setText(tr("Read-only analysis by the Refract core: files in the mods folder are only read, never changed. "
                          "Identity here comes from the launcher's own install records checked against the file hashes; it is not "
                          "verified with Modrinth, and no network is used."));
     m_analyze->setText(tr("Analyze"));

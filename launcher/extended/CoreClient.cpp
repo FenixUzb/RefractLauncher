@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /*
- *  Prism Extended (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
+ *  Refract Launcher (a fork of Prism Launcher; not affiliated with or endorsed by the Prism Launcher project)
  */
 #include "CoreClient.h"
 
@@ -81,7 +81,7 @@ bool CoreClient::ensureStarted(QString* error)
     if (!isConfigured()) {
         *error = m_config.program.isEmpty()
                      ? tr("Node.js was not found: install it or set PRISM_EXT_NODE to the absolute path of node.exe.")
-                     : tr("The Prism Extended core is not configured: set PRISM_EXT_CORE to the path of src/ipc-server.mjs.");
+                     : tr("The Refract core is not configured: set PRISM_EXT_CORE to the path of src/ipc-server.mjs.");
         return false;
     }
     releaseProcess(true);

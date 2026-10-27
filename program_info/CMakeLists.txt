@@ -8,15 +8,17 @@ if(UNIX)
     endif()
 endif()
 
-set(Launcher_CommonName "PrismLauncher")
-set(Launcher_DisplayName "Prism Launcher")
+# Refract Launcher is a fork of Prism Launcher and is not affiliated with or endorsed by the Prism Launcher project.
+# The AppID (and the icon/desktop/metainfo files named after it) is still Prism's until the fork has its own icon.
+set(Launcher_CommonName "RefractLauncher")
+set(Launcher_DisplayName "Refract Launcher")
 set(Launcher_AppID "org.prismlauncher.PrismLauncher")
-set(Launcher_Domain "prismlauncher.org")
-set(Launcher_Git "https://github.com/PrismLauncher/PrismLauncher")
+set(Launcher_Domain "github.com/FenixUzb/RefractLauncher")
+set(Launcher_Git "https://github.com/FenixUzb/RefractLauncher")
 
 set(Launcher_Name "${Launcher_CommonName}" PARENT_SCOPE)
 set(Launcher_DisplayName "${Launcher_DisplayName}" PARENT_SCOPE)
-set(Launcher_ENVName "PRISMLAUNCHER" PARENT_SCOPE)
+set(Launcher_ENVName "REFRACTLAUNCHER" PARENT_SCOPE)
 set(Launcher_Domain "${Launcher_Domain}" PARENT_SCOPE)
 set(Launcher_Git "${Launcher_Git}" PARENT_SCOPE)
 
