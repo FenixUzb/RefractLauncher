@@ -1,6 +1,7 @@
 #pragma once
 #include <FileSystem.h>
 #include <ui/pages/instance/DataPackPage.h>
+#include "extended/ExtendedAnalyzePage.h"
 #include "minecraft/MinecraftInstance.h"
 #include "ui/pages/BasePage.h"
 #include "ui/pages/BasePageProvider.h"
@@ -34,6 +35,7 @@ class InstancePageProvider : protected QObject, public BasePageProvider {
         auto modsPage = new ModFolderPage(onesix, onesix->loaderModList());
         modsPage->setFilter("%1 (*.zip *.jar *.litemod *.nilmod)");
         values.append(modsPage);
+        values.append(new ExtendedAnalyzePage(onesix));
         values.append(new CoreModFolderPage(onesix, onesix->coreModList()));
         values.append(new NilModFolderPage(onesix, onesix->nilModList()));
         values.append(new ResourcePackPage(onesix, onesix->resourcePackList()));

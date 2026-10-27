@@ -1323,6 +1323,14 @@ endif()
 
 ####### Targets ########
 
+# Prism Extended bridge (fork only): a read-only instance page talking to the external core
+set(LAUNCHER_SOURCES ${LAUNCHER_SOURCES}
+    extended/CoreClient.cpp
+    extended/CoreClient.h
+    extended/ExtendedAnalyzePage.cpp
+    extended/ExtendedAnalyzePage.h
+)
+
 # Add executable
 add_library(Launcher_logic STATIC ${LOGIC_SOURCES} ${LAUNCHER_SOURCES} ${LAUNCHER_UI} ${LAUNCHER_RESOURCES})
 target_include_directories(Launcher_logic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
