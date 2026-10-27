@@ -57,8 +57,8 @@ class CoreClient : public QObject {
     bool ensureStarted(QString* error);
     void onReadyRead();
     void deliver(const QString& requestId, const QJsonObject& response);
-    /** Fails every pending request; returns false if a callback destroyed this client. */
-    bool failAll(const QString& code, const QString& message);
+    /** Fails every pending request; stops early if a callback destroys this client. */
+    void failAll(const QString& code, const QString& message);
     /** Fails everything and kills the process; the next request starts a new one. */
     void reset(const QString& code, const QString& message);
     void releaseProcess(bool kill);

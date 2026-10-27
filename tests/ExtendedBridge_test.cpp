@@ -155,6 +155,49 @@ class ExtendedBridgeTest : public QObject {
         QCOMPARE(calls, 1);
     }
 
+    void retryingFromAnErrorCallbackWorks()
+    {
+        if (nodeProgram().isEmpty())
+            QSKIP("node not found");
+        QTemporaryDir dir;
+        // First process: hangs (timeout case) or writes garbage (protocol case) on its first request only.
+        for (const QString& misbehave : { QString("while (true) {}"), QString("process.stdout.write('not json\\n'); return;") }) {
+            const QString marker = dir.filePath(QString("once-%1").arg(misbehave.size()));
+            CoreClient client(fakeCore("const fs = require('fs'); rl.on('line', l => { if (!fs.existsSync(process.argv[1])) {"
+                                       " fs.writeFileSync(process.argv[1], 'x'); " + misbehave + " } reply(l); });",
+                                       { marker }));
+            QString firstCode;
+            QJsonObject retried;
+            client.request("core.health", {}, [&](const QJsonObject& response) {
+                firstCode = errorCode(response);
+                client.request("core.health", {}, [&](const QJsonObject& again) { retried = again; }, 10000);  // retry from inside
+            }, 300);
+            QTRY_VERIFY_WITH_TIMEOUT(!retried.isEmpty(), 15000);
+            QVERIFY2(firstCode == "E_TIMEOUT" || firstCode == "E_PROTOCOL", qPrintable(firstCode));
+            QVERIFY2(retried.value("ok").toBool(), qPrintable(QJsonDocument(retried).toJson()));
+        }
+    }
+
+    void deletingTheClientInsideAnErrorCallbackIsSafe()
+    {
+        if (nodeProgram().isEmpty())
+            QSKIP("node not found");
+        for (const QString& misbehave : { QString("rl.on('line', () => { while (true) {} });"),
+                                          QString("rl.on('line', () => process.stdout.write('not json\\n'));") }) {
+            auto* client = new CoreClient(fakeCore(misbehave));
+            QPointer<CoreClient> guard(client);
+            int calls = 0;
+            client->request("core.health", {}, [&](const QJsonObject&) {
+                calls++;
+                delete client;
+            }, 300);
+            client->request("core.health", {}, [&](const QJsonObject&) { calls++; }, 300);
+            QTRY_VERIFY_WITH_TIMEOUT(guard.isNull(), 10000);
+            QTest::qWait(500);
+            QCOMPARE(calls, 1);
+        }
+    }
+
     void protocolViolationsFailFast()
     {
         if (nodeProgram().isEmpty())
@@ -230,12 +273,14 @@ class ExtendedBridgeTest : public QObject {
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.write("SYNTHETIC, not a zip");
         file.close();
-        const QString previous = QDir::currentPath();
+        struct RestoreCurrentDir {
+            QString path = QDir::currentPath();
+            ~RestoreCurrentDir() { QDir::setCurrent(path); }  // also when a check below fails and returns early
+        } restore;
         QDir::setCurrent(dir.path());  // Prism keeps instance paths relative to its data directory
         ExtendedAnalyzePage page("instances/synthetic/minecraft/mods", { nodeProgram(), { core } });
         page.analyze();
         QTRY_VERIFY_WITH_TIMEOUT(page.tree()->topLevelItemCount() == 1, 15000);
-        QDir::setCurrent(previous);
         QCOMPARE(page.tree()->topLevelItem(0)->text(0), QString("synthetic.jar"));
         QVERIFY2(page.statusText().startsWith("1 file"), qPrintable(page.statusText()));
     }

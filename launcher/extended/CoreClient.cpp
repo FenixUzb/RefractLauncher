@@ -53,14 +53,16 @@ void CoreClient::releaseProcess(bool kill)
         return;
     QProcess* process = std::exchange(m_process, nullptr);
     process->disconnect(this);
+    // The process may be emitting the very signal we are in, and this client may be destroyed right after:
+    // hand it to the application so it is never deleted synchronously as our child.
+    if (auto* app = QCoreApplication::instance())
+        process->setParent(app);
     if (process->state() == QProcess::NotRunning) {
         process->deleteLater();
         return;
     }
-    // Never wait on the GUI thread: hand the process to a reaper owned by the application. A busy core is killed
-    // now; an idle one gets EOF (it exits by itself) and is killed after 2 s if it has not.
-    if (auto* app = QCoreApplication::instance())
-        process->setParent(app);
+    // Never wait on the GUI thread: a busy core is killed now; an idle one gets EOF (it exits by itself) and is
+    // killed after 2 s if it has not. The application deletes it once it has finished.
     QObject::connect(process, &QProcess::finished, process, &QObject::deleteLater);
     if (kill) {
         process->kill();
@@ -90,17 +92,19 @@ bool CoreClient::ensureStarted(QString* error)
     auto env = QProcessEnvironment::systemEnvironment();
     env.remove("NODE_OPTIONS");  // no injected --require/--import into the core
     m_process->setProcessEnvironment(env);
-    connect(m_process, &QProcess::readyReadStandardOutput, this, &CoreClient::onReadyRead);
-    connect(m_process, &QProcess::readyReadStandardError, this, [this] {
-        m_stderrTail += m_process->readAllStandardError();
+    // Handlers use their own process pointer: callbacks they trigger may already have started a newer core.
+    QProcess* process = m_process;
+    connect(process, &QProcess::readyReadStandardOutput, this, &CoreClient::onReadyRead);
+    connect(process, &QProcess::readyReadStandardError, this, [this, process] {
+        m_stderrTail += process->readAllStandardError();
         if (m_stderrTail.size() > stderrTailBytes)
             m_stderrTail = m_stderrTail.right(stderrTailBytes);
     });
-    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
-        failAll("E_CORE_UNAVAILABLE", withStderr(m_process->errorString()));
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError) {
+        failAll("E_CORE_UNAVAILABLE", withStderr(process->errorString()));
     });
-    connect(m_process, &QProcess::finished, this, [this](int exitCode) {
-        m_stderrTail += m_process->readAllStandardError();
+    connect(process, &QProcess::finished, this, [this, process](int exitCode) {
+        m_stderrTail += process->readAllStandardError();
         failAll("E_CORE_UNAVAILABLE", withStderr(tr("The core exited (code %1).").arg(exitCode)));
     });
     m_process->start(m_config.program, m_config.arguments);
@@ -129,7 +133,13 @@ void CoreClient::request(const QString& command, const QJsonObject& params, Call
     timer->setSingleShot(true);
     // The core answers in order: a request it is still working on blocks every later one, so a timeout
     // restarts the core instead of leaving the queue stuck behind it.
-    connect(timer, &QTimer::timeout, this, [this] { reset("E_TIMEOUT", tr("The core did not answer in time and was restarted.")); });
+    // Deferred, so no callback (which may delete this client and its timers) runs inside the timer's own signal.
+    connect(timer, &QTimer::timeout, this, [this, requestId] {
+        QTimer::singleShot(0, this, [this, requestId] {
+            if (m_pending.contains(requestId))  // its answer may have arrived in the meantime
+                reset("E_TIMEOUT", tr("The core did not answer in time and was restarted."));
+        });
+    });
     m_pending.insert(requestId, { std::move(callback), timer });
     timer->start(timeoutMs < 0 ? m_config.requestTimeoutMs : timeoutMs);
     const QJsonObject envelope{
@@ -180,7 +190,7 @@ void CoreClient::deliver(const QString& requestId, const QJsonObject& response)
     pending.callback(response);
 }
 
-bool CoreClient::failAll(const QString& code, const QString& message)
+void CoreClient::failAll(const QString& code, const QString& message)
 {
     const auto pending = std::exchange(m_pending, {});
     for (const auto& entry : pending) {  // timers first, while this client certainly exists
@@ -191,24 +201,14 @@ bool CoreClient::failAll(const QString& code, const QString& message)
     for (const auto& entry : pending) {
         entry.callback(errorResponse(code, message));
         if (!self)
-            return false;
+            return;
     }
-    return true;
 }
 
 void CoreClient::reset(const QString& code, const QString& message)
 {
-    if (m_process)
-        m_process->disconnect(this);  // its finished/error signals must not fail requests made after the reset
-    QProcess* process = std::exchange(m_process, nullptr);
-    if (!failAll(code, message)) {
-        // A callback destroyed this client; the process is no longer ours to track but must still go away.
-        if (process) {
-            process->kill();
-            process->deleteLater();
-        }
-        return;
-    }
-    m_process = process;
+    // Let go of the process first: the callbacks below may start a new core or destroy this client.
     releaseProcess(true);
+    m_buffer.clear();
+    failAll(code, message);
 }
