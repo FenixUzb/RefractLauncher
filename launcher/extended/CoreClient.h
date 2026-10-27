@@ -7,8 +7,8 @@
  */
 #pragma once
 
-#include <QHash>
 #include <QJsonObject>
+#include <QMap>
 #include <QObject>
 #include <QStringList>
 #include <functional>
@@ -68,6 +68,6 @@ class CoreClient : public QObject {
     QProcess* m_process = nullptr;
     QByteArray m_buffer;
     QByteArray m_stderrTail;
-    QHash<QString, Pending> m_pending;
+    QMap<quint64, Pending> m_pending;  // ordered by request number: failures are reported in request order
     quint64 m_nextId = 1;
 };

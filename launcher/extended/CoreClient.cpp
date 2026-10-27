@@ -128,19 +128,20 @@ void CoreClient::request(const QString& command, const QJsonObject& params, Call
         QTimer::singleShot(0, this, [callback = std::move(callback), error] { callback(errorResponse("E_CORE_UNAVAILABLE", error)); });
         return;
     }
-    const QString requestId = QString("q%1").arg(m_nextId++);
+    const quint64 number = m_nextId++;
+    const QString requestId = QString("q%1").arg(number);
     auto* timer = new QTimer(this);
     timer->setSingleShot(true);
     // The core answers in order: a request it is still working on blocks every later one, so a timeout
     // restarts the core instead of leaving the queue stuck behind it.
     // Deferred, so no callback (which may delete this client and its timers) runs inside the timer's own signal.
-    connect(timer, &QTimer::timeout, this, [this, requestId] {
-        QTimer::singleShot(0, this, [this, requestId] {
-            if (m_pending.contains(requestId))  // its answer may have arrived in the meantime
+    connect(timer, &QTimer::timeout, this, [this, number] {
+        QTimer::singleShot(0, this, [this, number] {
+            if (m_pending.contains(number))  // its answer may have arrived in the meantime
                 reset("E_TIMEOUT", tr("The core did not answer in time and was restarted."));
         });
     });
-    m_pending.insert(requestId, { std::move(callback), timer });
+    m_pending.insert(number, { std::move(callback), timer });
     timer->start(timeoutMs < 0 ? m_config.requestTimeoutMs : timeoutMs);
     const QJsonObject envelope{
         { "protocolVersion", 1 }, { "requestId", requestId }, { "command", command }, { "params", params }, { "dryRun", true }
@@ -180,7 +181,9 @@ void CoreClient::onReadyRead()
 
 void CoreClient::deliver(const QString& requestId, const QJsonObject& response)
 {
-    auto it = m_pending.find(requestId);
+    bool isNumber = false;
+    const quint64 number = requestId.startsWith('q') ? requestId.mid(1).toULongLong(&isNumber) : 0;
+    auto it = isNumber ? m_pending.find(number) : m_pending.end();
     if (it == m_pending.end())
         return;
     const Pending pending = it.value();
