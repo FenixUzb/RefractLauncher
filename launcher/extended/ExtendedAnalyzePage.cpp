@@ -69,7 +69,8 @@ void ExtendedAnalyzePage::buildUi()
 void ExtendedAnalyzePage::retranslate()
 {
     m_notice->setText(tr("Read-only analysis by the Prism Extended core: files in the mods folder are only read, never changed. "
-                         "Identity comes from the launcher's own install records checked against the file hashes; no network is used."));
+                         "Identity here comes from the launcher's own install records checked against the file hashes; it is not "
+                         "verified with Modrinth, and no network is used."));
     m_analyze->setText(tr("Analyze"));
     m_tree->setHeaderLabels({ tr("File"), tr("Enabled"), tr("Archive"), tr("Loader"), tr("Mod ID"), tr("Version"), tr("Identity"),
                               tr("Project") });
@@ -88,11 +89,42 @@ void ExtendedAnalyzePage::analyze()
     m_status->setText(tr("Analyzing…"));
     // Prism may keep instance paths relative to its data directory; the core accepts only local absolute paths.
     const QString modsDir = QDir::toNativeSeparators(QFileInfo(m_modsDir).absoluteFilePath());
-    m_client->request("inventory.analyze", QJsonObject{ { "modsDir", modsDir } }, [this](const QJsonObject& response) {
-        m_analyze->setEnabled(true);
-        showResult(response);
+    // Version check first (docs/02 §7): only a read-only protocol-v1 core is used.
+    m_client->request("core.health", {}, [this, modsDir](const QJsonObject& health) {
+        const auto info = health.value("result").toObject();
+        if (!health.value("ok").toBool() || !info.value("protocolVersions").toArray().contains(1) || !info.value("readOnly").toBool()) {
+            m_analyze->setEnabled(true);
+            showResult(health.value("ok").toBool()
+                           ? CoreClient::errorResponse("E_UNSUPPORTED_CORE", tr("The core does not offer read-only protocol version 1."))
+                           : health);
+            return;
+        }
+        // Hashing a large mods folder on a slow disk can take a while: give it more than the default timeout.
+        m_client->request(
+            "inventory.analyze", QJsonObject{ { "modsDir", modsDir } },
+            [this](const QJsonObject& response) {
+                m_analyze->setEnabled(true);
+                showResult(response);
+            },
+            5 * 60 * 1000);
     });
 }
+
+namespace {
+QString identityText(const QString& status)
+{
+    // A claimed identity is the launcher's own install record matching the file hash, not a provider check.
+    if (status == "identified")
+        return ExtendedAnalyzePage::tr("verified");
+    if (status == "claimed")
+        return ExtendedAnalyzePage::tr("claimed (unverified)");
+    if (status == "unknown")
+        return ExtendedAnalyzePage::tr("unknown");
+    if (status == "not_checked")
+        return ExtendedAnalyzePage::tr("not checked");
+    return status;
+}
+}  // namespace
 
 QString ExtendedAnalyzePage::statusText() const
 {
@@ -115,12 +147,13 @@ void ExtendedAnalyzePage::showResult(const QJsonObject& response)
         const auto metadata = file.value("metadata").toObject();
         const auto mods = metadata.value("mods").toArray();
         const auto identity = file.value("identity").toObject();
-        const QString archive = file.value("reason").toString().isEmpty()
-                                    ? file.value("status").toString()
-                                    : QString("%1 (%2)").arg(file.value("status").toString(), file.value("reason").toString());
+        const QString status = file.value("status").toString();
+        QString archive = status == "unidentified" ? tr("valid") : status;
+        if (!file.value("reason").toString().isEmpty())
+            archive = QString("%1 (%2)").arg(archive, file.value("reason").toString());
         QString project = identity.value("projectId").toString();
-        if (project.isEmpty())
-            project = identity.value("claimedProjectId").toString();
+        if (project.isEmpty() && !identity.value("claimedProjectId").toString().isEmpty())
+            project = tr("%1 (claimed)").arg(identity.value("claimedProjectId").toString());
         auto* item = new QTreeWidgetItem(m_tree);
         item->setText(ColFile, file.value("filename").toString());
         item->setText(ColEnabled, file.value("enabled").toBool(true) ? tr("yes") : tr("no"));
@@ -128,19 +161,22 @@ void ExtendedAnalyzePage::showResult(const QJsonObject& response)
         item->setText(ColLoader, joinedUnique(mods, "loader"));
         item->setText(ColModId, joinedUnique(mods, "modId"));
         item->setText(ColVersion, joinedUnique(mods, "version"));
-        item->setText(ColIdentity, identity.value("status").toString());
+        item->setText(ColIdentity, identityText(identity.value("status").toString()));
         item->setText(ColProject, project);
         item->setToolTip(ColIdentity, identity.value("reason").toString());
-        const QString status = file.value("status").toString();
         if (status == "invalid_archive" || status == "invalid_jar_signature")
             item->setForeground(ColArchive, QColor(0xc0, 0x39, 0x2b));
     }
     m_tree->setSortingEnabled(true);
     m_tree->sortByColumn(ColFile, Qt::AscendingOrder);
     const auto summary = result.value("summary").toObject();
-    m_status->setText(tr("%n file(s): %1 identified, %2 confirmed by install records, %3 unknown, %4 not checked.", "", files.size())
-                          .arg(summary.value("identified").toInt())
-                          .arg(summary.value("claimed").toInt())
-                          .arg(summary.value("unknown").toInt())
-                          .arg(summary.value("notChecked").toInt()));
+    QString text = tr("%n file(s): %1 verified, %2 claimed by install records (unverified), %3 unknown, %4 not checked.", "", files.size())
+                       .arg(summary.value("identified").toInt())
+                       .arg(summary.value("claimed").toInt())
+                       .arg(summary.value("unknown").toInt())
+                       .arg(summary.value("notChecked").toInt());
+    const auto indexIssues = result.value("indexIssues").toArray();
+    if (!indexIssues.isEmpty())
+        text += ' ' + tr("Index records skipped: %1.").arg(indexIssues.size());
+    m_status->setText(text);
 }
