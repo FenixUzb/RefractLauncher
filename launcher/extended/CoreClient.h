@@ -37,10 +37,11 @@ class CoreClient : public QObject {
     /** discover() for this executable's folder and the process environment. */
     static Config configFromEnvironment();
     /**
-     * Where the core is. PRISM_EXT_NODE / PRISM_EXT_CORE win when set (development). Otherwise the bundle next to
-     * the executable: `<appDir>/refract-core/src/ipc-server.mjs`, run by `<appDir>/refract-core/node[.exe]` when
-     * present, else by "node" resolved on PATH to an absolute path (never looked up in the current directory).
-     * No core found = empty arguments, which the bridge reports as not configured.
+     * Where the core is. PRISM_EXT_NODE / PRISM_EXT_CORE win when set (development); they must be complete paths
+     * ("C:\..." / "/..."), anything else leaves the core unconfigured. Otherwise the bundle next to the executable
+     * (a complete `appDir` only): `<appDir>/refract-core/src/ipc-server.mjs`, run by `<appDir>/refract-core/node[.exe]`
+     * when that is a file, else by node.exe found in the complete-path entries of `env`'s PATH (never the current
+     * directory). No core found = empty arguments, no node = empty program; the bridge reports either.
      */
     static Config discover(const QString& appDir, const QProcessEnvironment& env);
     static QJsonObject errorResponse(const QString& code, const QString& message);

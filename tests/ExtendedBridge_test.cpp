@@ -15,6 +15,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
+#include <QScopeGuard>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
@@ -95,11 +96,60 @@ class ExtendedBridgeTest : public QObject {
         QCOMPARE(overridden.program, otherNode);
         QCOMPARE(overridden.arguments, QStringList{ "D:/dev/core/src/ipc-server.mjs" });
 
-        // A bundle without its own node falls back to node on PATH, never to a bare name in the current folder.
+        // Overrides must be complete paths; anything else leaves the core unconfigured instead of running something
+        // relative to the current folder (Prism's data dir). "C:node.exe" is relative to drive C's current folder.
+        for (const QString& bad : { QString("C:node.exe"), QString("tools/node.exe"), QString("node") }) {
+            QProcessEnvironment badNode;
+            badNode.insert("PRISM_EXT_NODE", bad);
+            QVERIFY2(CoreClient::discover(dir.path(), badNode).program.isEmpty(), qPrintable(bad));
+        }
+        QProcessEnvironment badCore;
+        badCore.insert("PRISM_EXT_CORE", "src/ipc-server.mjs");
+        QVERIFY(CoreClient::discover(dir.path(), badCore).arguments.isEmpty());
+
+        // A bundle without its own node falls back to node on PATH: only PATH entries that are complete paths,
+        // never the current folder, and nothing at all when PATH has no usable entry.
         QVERIFY(QFile::remove(node));
-        const auto pathNode = CoreClient::discover(dir.path(), QProcessEnvironment());
+        QTemporaryDir onPath;
+        QTemporaryDir cwd;
+        QVERIFY(onPath.isValid() && cwd.isValid());
+#ifdef Q_OS_WIN
+        const QString nodeName = "node.exe";
+#else
+        const QString nodeName = "node";
+#endif
+        for (const QString& path : { QDir(onPath.path()).filePath(nodeName), QDir(cwd.path()).filePath(nodeName),
+                                     QDir(cwd.path()).filePath("tools/" + nodeName) }) {
+            QVERIFY(QDir().mkpath(QFileInfo(path).path()));
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.setPermissions(file.permissions() | QFileDevice::ExeOwner);
+        }
+        const QString previous = QDir::currentPath();
+        QVERIFY(QDir::setCurrent(cwd.path()));
+        const auto restore = qScopeGuard([&] { QDir::setCurrent(previous); });
+        const QChar sep = QDir::listSeparator();
+        QProcessEnvironment pathEnv;
+        pathEnv.insert("PATH", QString(".") + sep + "tools" + sep + onPath.path());
+        const auto pathNode = CoreClient::discover(dir.path(), pathEnv);
         QCOMPARE(pathNode.arguments, QStringList{ core });
-        QVERIFY(pathNode.program.isEmpty() || QFileInfo(pathNode.program).isAbsolute());
+        QCOMPARE(QFileInfo(pathNode.program).canonicalFilePath(), QFileInfo(QDir(onPath.path()).filePath(nodeName)).canonicalFilePath());
+        QProcessEnvironment relativeOnly;
+        relativeOnly.insert("PATH", QString(".") + sep + "tools");
+        QVERIFY(CoreClient::discover(dir.path(), relativeOnly).program.isEmpty());
+        QVERIFY(CoreClient::discover(dir.path(), QProcessEnvironment()).program.isEmpty());
+
+        // A folder named like the bundled node is not a program.
+        QVERIFY(dir.mkpath(QString("refract-core/") + nodeName));
+        QCOMPARE(QFileInfo(CoreClient::discover(dir.path(), pathEnv).program).canonicalFilePath(),
+                 QFileInfo(QDir(onPath.path()).filePath(nodeName)).canonicalFilePath());
+
+        // A relative application folder would resolve against the current folder too: the bundle is not used.
+        QVERIFY(QDir(cwd.path()).mkpath("app/refract-core/src"));
+        QFile relativeCore(QDir(cwd.path()).filePath("app/refract-core/src/ipc-server.mjs"));
+        QVERIFY(relativeCore.open(QIODevice::WriteOnly));
+        relativeCore.close();
+        QVERIFY(CoreClient::discover("app", QProcessEnvironment()).arguments.isEmpty());
     }
 
     void unconfiguredCoreIsAnErrorNotACrash()
@@ -267,12 +317,19 @@ class ExtendedBridgeTest : public QObject {
     {
         if (nodeProgram().isEmpty())
             QSKIP("node not found");
-        qputenv("PRISM_EXT_NODE", "node");
-        qputenv("PRISM_EXT_CORE", "synthetic-core.mjs");
-        const auto config = CoreClient::configFromEnvironment();
+        const QByteArray savedNode = qgetenv("PRISM_EXT_NODE");
+        const auto restore = qScopeGuard([&] {
+            if (savedNode.isEmpty())
+                qunsetenv("PRISM_EXT_NODE");
+            else
+                qputenv("PRISM_EXT_NODE", savedNode);
+        });
         qunsetenv("PRISM_EXT_NODE");
-        qunsetenv("PRISM_EXT_CORE");
+        const auto config = CoreClient::configFromEnvironment();
         QVERIFY2(QFileInfo(config.program).isAbsolute(), qPrintable(config.program));  // never looked up in Prism's data dir
+        // A bare program name is not a complete path: it is refused rather than searched for.
+        qputenv("PRISM_EXT_NODE", "node");
+        QVERIFY(CoreClient::configFromEnvironment().program.isEmpty());
     }
 
     void realCoreHealthAndReadOnlyInventory()

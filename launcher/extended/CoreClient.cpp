@@ -17,7 +17,41 @@
 
 namespace {
 constexpr qsizetype stderrTailBytes = 4096;
+QString nodeName()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("node.exe");
+#else
+    return QStringLiteral("node");
+#endif
 }
+
+/**
+ * A complete local path: "X:\..." or "X:/..." on Windows ("C:node.exe" is relative to drive C's current folder,
+ * though Qt calls it absolute), "/..." elsewhere. Anything else would resolve against the current directory,
+ * which in the launcher is Prism's data dir.
+ */
+bool isCompletePath(const QString& path)
+{
+#ifdef Q_OS_WIN
+    return path.size() >= 3 && path.at(0).isLetter() && path.at(1) == ':' && (path.at(2) == '\\' || path.at(2) == '/');
+#else
+    return path.startsWith('/');
+#endif
+}
+
+/** `name` in the complete-path entries of `env`'s PATH only; with none, nothing (an empty list would make
+ *  QStandardPaths search the process PATH, relative entries included). */
+QString findOnPath(const QString& name, const QProcessEnvironment& env)
+{
+    QStringList dirs;
+    for (const QString& dir : env.value("PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
+        if (isCompletePath(dir))
+            dirs << dir;
+    }
+    return dirs.isEmpty() ? QString() : QStandardPaths::findExecutable(name, dirs);
+}
+}  // namespace
 
 CoreClient::Config CoreClient::configFromEnvironment()
 {
@@ -26,28 +60,28 @@ CoreClient::Config CoreClient::configFromEnvironment()
 
 CoreClient::Config CoreClient::discover(const QString& appDir, const QProcessEnvironment& env)
 {
+    // A relative application folder would resolve against the current directory too: its bundle is not used.
+    const bool bundleUsable = isCompletePath(appDir);
     const QDir bundle(QDir(appDir).filePath("refract-core"));
     const QString bundledCore = bundle.filePath("src/ipc-server.mjs");
-#ifdef Q_OS_WIN
-    const QString bundledNode = bundle.filePath("node.exe");
-#else
-    const QString bundledNode = bundle.filePath("node");
-#endif
+    const QString bundledNode = bundle.filePath(nodeName());
     Config config;
-    // On Windows QProcess looks for a bare program name in the current directory (Prism's data dir) before
-    // PATH; resolving it here means only PATH or an explicit absolute path is ever used.
+    // Overrides must be complete paths; anything else leaves the core unconfigured, so the mistake shows instead
+    // of something relative to the data dir being run. QProcess is only ever given a complete path.
     const QString node = env.value("PRISM_EXT_NODE");
     if (!node.isEmpty()) {
-        config.program = QFileInfo(node).isAbsolute() ? node : QStandardPaths::findExecutable(node);
-    } else if (QFileInfo(bundledNode).isFile()) {
+        if (isCompletePath(node))
+            config.program = node;
+    } else if (bundleUsable && QFileInfo(bundledNode).isFile()) {
         config.program = bundledNode;
     } else {
-        config.program = QStandardPaths::findExecutable("node");
+        config.program = findOnPath(nodeName(), env);
     }
     const QString core = env.value("PRISM_EXT_CORE");
     if (!core.isEmpty()) {
-        config.arguments = { core };
-    } else if (QFileInfo(bundledCore).isFile()) {
+        if (isCompletePath(core))
+            config.arguments = { core };
+    } else if (bundleUsable && QFileInfo(bundledCore).isFile()) {
         config.arguments = { bundledCore };
     }
     return config;
@@ -101,8 +135,9 @@ bool CoreClient::ensureStarted(QString* error)
         return true;
     if (!isConfigured()) {
         *error = m_config.program.isEmpty()
-                     ? tr("Node.js was not found: install it or set PRISM_EXT_NODE to the absolute path of node.exe.")
-                     : tr("The Refract core is not configured: set PRISM_EXT_CORE to the path of src/ipc-server.mjs.");
+                     ? tr("Node.js was not found: install Node.js 22.13 or newer, or set PRISM_EXT_NODE to the full path of node.exe.")
+                     : tr("The Refract core was not found: it is installed in refract-core next to the program, or set "
+                          "PRISM_EXT_CORE to the full path of src/ipc-server.mjs.");
         return false;
     }
     releaseProcess(true);
