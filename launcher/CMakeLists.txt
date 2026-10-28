@@ -1330,6 +1330,7 @@ set(LAUNCHER_SOURCES ${LAUNCHER_SOURCES}
     extended/ExtendedAnalyzePage.cpp
     extended/ExtendedAnalyzePage.h
 )
+include(extended/RefractCore.cmake)
 
 # Add executable
 add_library(Launcher_logic STATIC ${LOGIC_SOURCES} ${LAUNCHER_SOURCES} ${LAUNCHER_UI} ${LAUNCHER_RESOURCES})

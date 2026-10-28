@@ -10,6 +10,7 @@
 #include <QJsonObject>
 #include <QMap>
 #include <QObject>
+#include <QProcessEnvironment>
 #include <QStringList>
 #include <functional>
 
@@ -33,11 +34,15 @@ class CoreClient : public QObject {
         int requestTimeoutMs = 30000;
         qsizetype maxResponseBytes = qsizetype(64) * 1024 * 1024;
     };
-    /**
-     * PRISM_EXT_NODE (default: "node" resolved on PATH to an absolute path, never looked up in the current
-     * directory) and PRISM_EXT_CORE (path to ipc-server.mjs; unset = not configured).
-     */
+    /** discover() for this executable's folder and the process environment. */
     static Config configFromEnvironment();
+    /**
+     * Where the core is. PRISM_EXT_NODE / PRISM_EXT_CORE win when set (development). Otherwise the bundle next to
+     * the executable: `<appDir>/refract-core/src/ipc-server.mjs`, run by `<appDir>/refract-core/node[.exe]` when
+     * present, else by "node" resolved on PATH to an absolute path (never looked up in the current directory).
+     * No core found = empty arguments, which the bridge reports as not configured.
+     */
+    static Config discover(const QString& appDir, const QProcessEnvironment& env);
     static QJsonObject errorResponse(const QString& code, const QString& message);
 
     using Callback = std::function<void(const QJsonObject& response)>;

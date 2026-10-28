@@ -5,6 +5,7 @@
 #include "CoreClient.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QPointer>
@@ -20,15 +21,35 @@ constexpr qsizetype stderrTailBytes = 4096;
 
 CoreClient::Config CoreClient::configFromEnvironment()
 {
-    const auto env = QProcessEnvironment::systemEnvironment();
+    return discover(QCoreApplication::applicationDirPath(), QProcessEnvironment::systemEnvironment());
+}
+
+CoreClient::Config CoreClient::discover(const QString& appDir, const QProcessEnvironment& env)
+{
+    const QDir bundle(QDir(appDir).filePath("refract-core"));
+    const QString bundledCore = bundle.filePath("src/ipc-server.mjs");
+#ifdef Q_OS_WIN
+    const QString bundledNode = bundle.filePath("node.exe");
+#else
+    const QString bundledNode = bundle.filePath("node");
+#endif
     Config config;
     // On Windows QProcess looks for a bare program name in the current directory (Prism's data dir) before
     // PATH; resolving it here means only PATH or an explicit absolute path is ever used.
-    const QString node = env.value("PRISM_EXT_NODE", "node");
-    config.program = QFileInfo(node).isAbsolute() ? node : QStandardPaths::findExecutable(node);
+    const QString node = env.value("PRISM_EXT_NODE");
+    if (!node.isEmpty()) {
+        config.program = QFileInfo(node).isAbsolute() ? node : QStandardPaths::findExecutable(node);
+    } else if (QFileInfo(bundledNode).isFile()) {
+        config.program = bundledNode;
+    } else {
+        config.program = QStandardPaths::findExecutable("node");
+    }
     const QString core = env.value("PRISM_EXT_CORE");
-    if (!core.isEmpty())
+    if (!core.isEmpty()) {
         config.arguments = { core };
+    } else if (QFileInfo(bundledCore).isFile()) {
+        config.arguments = { bundledCore };
+    }
     return config;
 }
 

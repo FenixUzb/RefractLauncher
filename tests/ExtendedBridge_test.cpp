@@ -64,6 +64,44 @@ class ExtendedBridgeTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void discoveryPrefersOverridesThenTheBundleThenPath()
+    {
+        QTemporaryDir app;
+        QVERIFY(app.isValid());
+        const QDir dir(app.path());
+        // Without a bundle and without overrides the core is not configured (no arguments).
+        QVERIFY(CoreClient::discover(dir.path(), QProcessEnvironment()).arguments.isEmpty());
+
+        QVERIFY(dir.mkpath("refract-core/src"));
+        const QString core = dir.filePath("refract-core/src/ipc-server.mjs");
+#ifdef Q_OS_WIN
+        const QString node = dir.filePath("refract-core/node.exe");
+#else
+        const QString node = dir.filePath("refract-core/node");
+#endif
+        for (const QString& path : { core, node }) {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        const auto bundled = CoreClient::discover(dir.path(), QProcessEnvironment());
+        QCOMPARE(bundled.program, node);
+        QCOMPARE(bundled.arguments, QStringList{ core });
+
+        QProcessEnvironment env;
+        const QString otherNode = QDir(QDir::tempPath()).absoluteFilePath("refract-dev/node.exe");
+        env.insert("PRISM_EXT_NODE", otherNode);
+        env.insert("PRISM_EXT_CORE", "D:/dev/core/src/ipc-server.mjs");
+        const auto overridden = CoreClient::discover(dir.path(), env);
+        QCOMPARE(overridden.program, otherNode);
+        QCOMPARE(overridden.arguments, QStringList{ "D:/dev/core/src/ipc-server.mjs" });
+
+        // A bundle without its own node falls back to node on PATH, never to a bare name in the current folder.
+        QVERIFY(QFile::remove(node));
+        const auto pathNode = CoreClient::discover(dir.path(), QProcessEnvironment());
+        QCOMPARE(pathNode.arguments, QStringList{ core });
+        QVERIFY(pathNode.program.isEmpty() || QFileInfo(pathNode.program).isAbsolute());
+    }
+
     void unconfiguredCoreIsAnErrorNotACrash()
     {
         CoreClient client(CoreClient::Config{});
